@@ -11,10 +11,11 @@ import openWebsocket from "./open-websocket.js";
 import Dictionary from "#frontend/Props";
 import type BufferView from "@rcompat/bufferview";
 import ResponseFunction from "#ResponseFunction";
+import ResponseLike from "#ResponseLike";
 
 type MaybeRedirectionStatus = Parameters<typeof redirect>[1];
-
 type Instantiation = import("./instantiate.js").Instantiation<any, any>;
+
 
 const RESPONSE_TEXT = 0 as const;
 const RESPONSE_JSON = 1 as const;
@@ -24,6 +25,7 @@ const RESPONSE_ERROR = 4 as const;
 const RESPONSE_REDIRECT = 5 as const;
 const RESPONSE_URI = 6 as const;
 const RESPONSE_WEB_SOCKET_UPGRADE = 7 as const;
+const RESPONSE_ASYNC = 8 as const;
 
 type DecodedResponse =
   | {
@@ -43,8 +45,14 @@ type DecodedResponse =
     value: any;
   }
   | {
-    type: "web_socket_upgrade";
+    type:
+      | "web_socket_upgrade";
     callback: (api: Instantiation) => ResponseFunction;
+  }
+  | {
+    type:
+      | "async";
+    callback: (api: Instantiation) => Promise<ResponseLike>;
   }
 
 const decodeResponse = (source: BufferView): DecodedResponse => {
@@ -58,7 +66,8 @@ const decodeResponse = (source: BufferView): DecodedResponse => {
     || responseKind === RESPONSE_TEXT
     || responseKind === RESPONSE_URI
     || responseKind === RESPONSE_VIEW
-    || responseKind === RESPONSE_WEB_SOCKET_UPGRADE,
+    || responseKind === RESPONSE_WEB_SOCKET_UPGRADE
+    || responseKind === RESPONSE_ASYNC,
     "Invalid response kind.",
   );
   switch (responseKind) {
@@ -126,6 +135,18 @@ const decodeResponse = (source: BufferView): DecodedResponse => {
         type: "web_socket_upgrade",
         callback: openWebsocket(id),
       };
+    }
+
+    case RESPONSE_ASYNC: {
+      const id = source.readU64();
+      return {
+        type: "async",
+        callback: (api) => {
+          const responseSet = Promise.withResolvers<ResponseLike>();
+          api.responses.set(id, responseSet);
+          return responseSet.promise;
+        },
+      }
     }
   }
 };

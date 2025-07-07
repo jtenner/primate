@@ -41,6 +41,9 @@ provide foreign wasm getStore:
 provide foreign wasm getStoreValue:
   () => Void from "primate"
 
+provide foreign wasm responseResolve:
+  (WasmI64) => Void from "primate"
+
 @unsafe
 provide let receiveString = () => {
   use WasmI32.{ (+), fromGrain }

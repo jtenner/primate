@@ -11,6 +11,7 @@ from "string" include String
 from "buffer" include Buffer
 from "result" include Result
 from "runtime/gc" include GC
+from "runtime/numbers" include Numbers
 from "runtime/unsafe/wasmi32" include WasmI32
 from "runtime/unsafe/offsets" include Offsets
 from "./external.gr" include External
@@ -224,6 +225,7 @@ let _RESPONSE_ERROR = 4ul
 let _RESPONSE_REDIRECT = 5ul
 let _RESPONSE_URI = 6ul
 let _RESPONSE_WEB_SOCKET_UPGRADE = 7ul
+let _RESPONSE_ASYNC = 8ul
 
 let _NONE = 0ul
 let _SOME = 1ul
@@ -530,10 +532,32 @@ provide let ws = (
   close: Option<UpgradeCloseCallback> = None,
   message: Option<UpgradeMessageCallback> = None,
 ) => {
-  use Uint64.{ (+) as (+..) }
   let wsId = WebSocket.make({ open, close, message })
   let buffer = Buffer.make(12)
   Buffer.addUint32(_RESPONSE_WEB_SOCKET_UPGRADE, buffer)
   Buffer.addUint64(wsId, buffer)
   Buffer.toBytes(buffer)
+}
+
+let mut asyncId = 0uL
+
+@unsafe
+provide let async = () => {
+  use Uint64.{ (+) as (+..) }
+  let id = asyncId
+  let buffer = Buffer.make(12)
+  Buffer.addUint32(_RESPONSE_ASYNC, buffer)
+  Buffer.addUint64(id, buffer)
+  asyncId = asyncId +.. 1uL
+  
+  (Buffer.toBytes(buffer), (res: Response) => {
+    use WasmI32.{ (+) as (+.) }
+    let id = Numbers.coerceNumberToWasmI64(Uint64.toNumber(id))
+    let resPtr = WasmI32.fromGrain(res)
+    let ptr = resPtr +. _BYTES_DATA_OFFSET
+    let size = WasmI32.load(resPtr, _BYTES_LEN_OFFSET)
+    External.send(ptr, size)
+    ignore(res)
+    External.responseResolve(id)
+  })
 }

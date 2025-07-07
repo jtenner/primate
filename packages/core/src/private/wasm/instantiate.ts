@@ -15,6 +15,7 @@ import text from "#handler/text";
 import Store from "#db/Store";
 import utf8size from "@rcompat/string/utf8size";
 
+type DecodedResponse = ReturnType<typeof decodeResponse>;
 /** A helper function to encourage type safety when working with wasm pointers, tagging them as a specific type. */
 type Tagged<Name, T> = { _tag: Name; } & T;
 
@@ -56,11 +57,17 @@ export type PrimateWasmExports<TRequest = I32, TResponse = I32> = {
   getStoreValueDone(): void;
 } & ExportedMethods<TRequest, TResponse>;
 
+type ResponseMap = Map<
+  bigint,
+  ReturnType<typeof Promise.withResolvers<ResponseLike>>
+>
+
 export type Instantiation<TRequest = I32, TResponse = I32> = {
   api: API;
   sockets: Map<bigint, any>,
   memory: WebAssembly.Memory;
   exports: PrimateWasmExports<TRequest, TResponse>;
+  responses: ResponseMap,
   setPayload(value: Uint8Array): void;
 };
 
@@ -107,7 +114,30 @@ const instantiate = async <TRequest = I32, TResponse = I32>(args: InstantiatePro
     payload = value;
   };
 
+  
+  const responses = new Map() as ResponseMap;
   const sockets = new Map<bigint, ServerWebSocket>();
+
+  const handleDecodedResponse = (response: DecodedResponse) => {
+    if (
+      response.type === "web_socket_upgrade"
+      || response.type === "async"
+    ) {
+      // The callback encloses over the response websocket id provided by
+      // the module.
+      return response.callback(instance);
+    }
+
+    if (response.type === "text") {
+      return text(response.text, {
+        status: response.status,
+        headers: response.headers,
+      });
+    }
+
+    return response.value;
+  }
+
 
   /**
    * The imports that Primate provides to the WASM module. This follows the Primate WASM ABI convention.
@@ -232,6 +262,25 @@ const instantiate = async <TRequest = I32, TResponse = I32>(args: InstantiatePro
       socket.close();
       sockets.delete(id);
     },
+
+    /**
+     * Resolve an async response. This function takes the given id with the response
+     * payload, and then resolves the response promise with a responselike.
+     * 
+     * @param id 
+     */
+    responseResolve(id: bigint) {
+      assert(responses.has(id), `Invalid response id, async response has no id: ${id}.`);
+      const { resolve } = responses.get(id)!;
+      const bufferView = new BufferView(received);
+      const response = decodeResponse(bufferView);
+      responses.delete(id);
+      if (response.type === "async") {
+        response.callback(instance).then(resolve);
+      } else {
+        resolve(handleDecodedResponse(response));
+      }
+    },
   };
 
   const bytes = await wasmFileRef.arrayBuffer();
@@ -281,7 +330,7 @@ const instantiate = async <TRequest = I32, TResponse = I32>(args: InstantiatePro
   const memory = exports.memory;
 
   const api = {} as API;
-  const instance = { setPayload, api, memory, exports, sockets } as Instantiation<TRequest, TResponse>;
+  const instance = { setPayload, api, memory, exports, sockets, responses } as Instantiation<TRequest, TResponse>;
   for (const method of methods) {
     if (method in exports && typeof exports[method] === "function") {
       const methodFunc = (request: Tagged<"Request", TRequest>) => exports[method]!(request) as Tagged<"Response", TResponse>;
@@ -301,21 +350,7 @@ const instantiate = async <TRequest = I32, TResponse = I32>(args: InstantiatePro
         const bufferView = new BufferView(received);
         const response = decodeResponse(bufferView);
         exports.finalizeResponse(wasmResponse);
-
-        if (response.type === "web_socket_upgrade") {
-          // The callback encloses over the response websocket id provided by
-          // the module.
-          return response.callback(instance);
-        }
-
-        if (response.type === "text") {
-          return text(response.text, {
-            status: response.status,
-            headers: response.headers,
-          });
-        }
-
-        return response.value;
+        return handleDecodedResponse(response)
       }
     }
   }
