@@ -41,6 +41,9 @@ provide foreign wasm getStore:
 provide foreign wasm getStoreValue:
   () => Void from "primate"
 
+provide foreign wasm updateStoreValue:
+  () => Void from "primate"
+
 provide foreign wasm responseResolve:
   (WasmI64) => Void from "primate"
 

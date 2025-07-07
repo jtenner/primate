@@ -7,3 +7,4 @@ provide let finalizeResponse = Exports.finalizeResponse
 provide let websocketOpen = Exports.websocketOpen
 provide let websocketClose = Exports.websocketClose
 provide let websocketMessage = Exports.websocketMessage
+provide let storeValueDone = Exports.storeValueDone

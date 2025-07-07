@@ -271,7 +271,7 @@ provide let text = (
   Buffer.addUint32(Uint32.fromNumber(headersLength), buffer)
   Buffer.addString(headers, buffer)
 
-  Buffer.toBytes(buffer)
+  Buffer.toBytes(buffer): Response
 }
 
 provide let json = (value: Json) => {
@@ -281,7 +281,8 @@ provide let json = (value: Json) => {
   Buffer.addUint32(_RESPONSE_JSON, buffer)
   Buffer.addUint32(Uint32.fromNumber(strLength), buffer)
   Buffer.addString(str, buffer)
-  Buffer.toBytes(buffer)
+
+  Buffer.toBytes(buffer): Response
 }
 
 provide let blob = (bytes: Bytes, contentType: Option<String> = Some("application/octet-stream")) => {
@@ -310,7 +311,7 @@ provide let blob = (bytes: Bytes, contentType: Option<String> = Some("applicatio
       Buffer.addUint32(_NONE, buffer)
     },
   }
-  Buffer.toBytes(buffer)
+  Buffer.toBytes(buffer): Response
 }
 
 provide let view = (
@@ -372,7 +373,8 @@ provide let view = (
   // view options
   Buffer.addUint32(Uint32.fromNumber(viewOptionsLength), buffer)
   Buffer.addString(viewOptionsStr, buffer)
-  Buffer.toBytes(buffer)
+
+  Buffer.toBytes(buffer): Response
 }
 
 provide let error = (
@@ -419,7 +421,8 @@ provide let error = (
     },
     None => Buffer.addUint32(_NONE, buffer)
   }
-  Buffer.toBytes(buffer)
+
+  Buffer.toBytes(buffer): Response
 }
 
 provide let redirect = (route: String, status: Option<HTTPStatus> = None) => {
@@ -443,7 +446,8 @@ provide let redirect = (route: String, status: Option<HTTPStatus> = None) => {
     },
     None => Buffer.addUint32(_NONE, buffer)
   }
-  Buffer.toBytes(buffer)
+
+  Buffer.toBytes(buffer): Response
 }
 
 provide let uri = (uri: Uri) => {
@@ -454,7 +458,8 @@ provide let uri = (uri: Uri) => {
   Buffer.addUint32(_RESPONSE_URI, buffer)
   Buffer.addUint32(Uint32.fromNumber(uriStrSize), buffer)
   Buffer.addString(uriStr, buffer)
-  Buffer.toBytes(buffer)
+
+  Buffer.toBytes(buffer): Response
 }
 
 @unsafe
@@ -536,7 +541,7 @@ provide let ws = (
   let buffer = Buffer.make(12)
   Buffer.addUint32(_RESPONSE_WEB_SOCKET_UPGRADE, buffer)
   Buffer.addUint64(wsId, buffer)
-  Buffer.toBytes(buffer)
+  Buffer.toBytes(buffer): Response
 }
 
 let mut asyncId = 0uL
@@ -550,7 +555,7 @@ provide let async = () => {
   Buffer.addUint64(id, buffer)
   asyncId = asyncId +.. 1uL
   
-  (Buffer.toBytes(buffer), (res: Response) => {
+  (Buffer.toBytes(buffer): Response, (res: Response) => {
     use WasmI32.{ (+) as (+.) }
     let id = Numbers.coerceNumberToWasmI64(Uint64.toNumber(id))
     let resPtr = WasmI32.fromGrain(res)

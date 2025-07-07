@@ -30,34 +30,97 @@ provide let getStore = (name: String) => {
   Conv.wasmI32ToNumber(storeId): Store
 }
 
-let callbacks = Map.make(): Map<Uint64, (Json) => Void>
+provide type JsonCallback = (Json) => Void
+
+let callbacks = Map.make(): Map<Uint64, JsonCallback>
 let mut callbackId = 0uL
 
-
-provide let get = (key: String, store: Store, callback: (Json) => Void) => {
+let addCallback = (callback: JsonCallback) => {
   use Uint64.{ (+) as (+.) }
+  let id = callbackId
+  Map.set(callbackId, callback, callbacks)
+  callbackId = callbackId +. 1uL
+  id
+}
+
+provide let get = (key: String, store: Store, callback: JsonCallback) => {
   // Encode the payload
   let store = Uint32.fromNumber(store)
   let byteLength = String.byteLength(key)
-  let payload = Buffer.make(byteLength + 16)
-  Buffer.addUint32(store, payload)
-  Buffer.addUint32(Uint32.fromNumber(byteLength), payload)
-  Buffer.addString(key, payload)
-  Buffer.addUint64(callbackId, payload)
-  callbackId = callbackId +. 1uL
-  let bytes = Buffer.toBytes(payload)
+  let buffer = Buffer.make(byteLength + 16)
+  Buffer.addUint32(store, buffer)
+  Buffer.addUint32(Uint32.fromNumber(byteLength), buffer)
+  Buffer.addString(key, buffer)
+
+  // Add callback
+  let callbackId = addCallback(callback)
+  Buffer.addUint64(callbackId, buffer)
+
+  let bytes = Buffer.toBytes(buffer)
   External.sendBytes(bytes)
   External.getStoreValue()
 }
 
-provide let getStoreValueDone = () => {
-  let payload = External.receiveBytes()
-  let id = Bytes.getUint64(0, payload)
-  let jsonSize = Bytes.getUint32(8, payload)
-  let jsonStr = Bytes.toString(Bytes.slice(12, Uint32.toNumber(jsonSize), payload))
+provide let storeValueDone = () => {
+  let buffer = External.receiveBytes()
+  let id = Bytes.getUint64(0, buffer)
+  let jsonSize = Bytes.getUint32(8, buffer)
+  let jsonStr = Bytes.toString(Bytes.slice(12, Uint32.toNumber(jsonSize), buffer))
   let json = Result.expect("Expected Valid JSON.", Json.parse(jsonStr))
   let callback = Option.expect("Expected callback to exist.", Map.get(id, callbacks))
   Map.remove(id, callbacks)
   callback(json)
   void
+}
+
+provide let update = (key: String, value: Json, store: Store, callback: JsonCallback) => {
+  use Uint64.{ (+) as (+.) }
+
+  let keySize = String.byteLength(key)
+  let value = Result.expect("Expected valid json", Json.toString(value))
+  let valueSize = String.byteLength(value)
+  
+  // 4 + 4 + key + 4 + value + 8
+  let buffer = Buffer.make(20 + keySize + valueSize)
+  Buffer.addUint32(Uint32.fromNumber(store), buffer)
+  Buffer.addUint32(Uint32.fromNumber(keySize), buffer)
+  Buffer.addString(key, buffer)
+  Buffer.addUint32(Uint32.fromNumber(valueSize), buffer)
+  Buffer.addString(value, buffer)
+  
+  // Add callback
+  let callbackId = addCallback(callback)
+  Buffer.addUint64(callbackId, buffer)
+
+  let bytes = Buffer.toBytes(buffer)
+  External.sendBytes(bytes)
+  External.updateStoreValue()
+}
+
+provide let find = (
+  query: Json,
+  store: Store,
+  fields: Option<List<String>> = None,
+  callback: JsonCallback,
+) => {
+  let query = Result.expect("Expected valid json.", Json.toString(query))
+  let queryLength = String.byteLength(query)
+  let buffer = Buffer.make(16 + queryLength)
+
+  Buffer.addUint32(Uint32.fromNumber(store), buffer)
+  
+  let callbackId = addCallback(callback)
+  Buffer.addUint64(callbackId, buffer)
+
+  Buffer.addUint32(Uint32.fromNumber(queryLength), buffer)
+  Buffer.addString(query, buffer)
+
+  match (fields) {
+    Some(fields) => {
+
+    },
+    None => {
+
+    },
+  }
 }

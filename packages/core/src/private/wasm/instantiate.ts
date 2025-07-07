@@ -54,7 +54,7 @@ export type PrimateWasmExports<TRequest = I32, TResponse = I32> = {
   websocketOpen(): void;
   websocketClose(): void;
   websocketMessage(): void;
-  getStoreValueDone(): void;
+  storeValueDone(): void;
 } & ExportedMethods<TRequest, TResponse>;
 
 type ResponseMap = Map<
@@ -114,7 +114,6 @@ const instantiate = async <TRequest = I32, TResponse = I32>(args: InstantiatePro
     payload = value;
   };
 
-  
   const responses = new Map() as ResponseMap;
   const sockets = new Map<bigint, ServerWebSocket>();
 
@@ -136,6 +135,19 @@ const instantiate = async <TRequest = I32, TResponse = I32>(args: InstantiatePro
     }
 
     return response.value;
+  }
+
+  const storeDone = (callbackId: bigint) => (value: any) => {
+    const valueString = JSON.stringify(value);
+    const valueLength = utf8size(valueString);
+    const payload = new Uint8Array(8 + 4 + valueLength);
+    const bufferView = new BufferView(payload);
+
+    bufferView.writeU64(callbackId)
+      .writeU32(valueLength)
+      .write(valueString);
+    setPayload(payload);
+    exports.storeValueDone();
   }
 
 
@@ -182,7 +194,7 @@ const instantiate = async <TRequest = I32, TResponse = I32>(args: InstantiatePro
     },
 
     /**
-     * Obtain a value from a given store store.
+     * Obtain a value from a given store.
      */
     getStoreValue() {
       const bufferView = new BufferView(received);
@@ -194,18 +206,53 @@ const instantiate = async <TRequest = I32, TResponse = I32>(args: InstantiatePro
       const store = idToStore.get(storeId);
 
       assert(!!store, `Store name for ${storeId} does not exist.`);
-      store!.get(key).then((value) => {
-        const valueString = JSON.stringify(value);
-        const valueLength = utf8size(valueString);
-        const payload = new Uint8Array(8 + 4 + valueLength);
-        const bufferView = new BufferView(payload);
+      store!.get(key).then(storeDone(callbackId));
+    },
 
-        bufferView.writeU64(callbackId);
-        bufferView.writeU32(valueLength);
-        bufferView.write(valueString);
-        setPayload(payload);
-        exports.getStoreValueDone();
-      });
+    /**
+     * Update a value in a store.
+     */
+    updateStoreValue() {
+      const bufferView = new BufferView(received);
+      const storeId = bufferView.readU32();
+      const callbackId = bufferView.readU64();
+      const keyLength = bufferView.readU32();
+      const key = bufferView.read(keyLength);
+      const valueLength = bufferView.readU32();
+      const value = JSON.parse(bufferView.read(valueLength));
+
+      const store = idToStore.get(storeId);
+      assert(!!store, `Store name for ${storeId} does not exist.`);
+
+      store!.update(key, value).then(storeDone(callbackId));
+    },
+
+    // store?.find
+    // store?.exists
+    // store?.insert
+    // store?.delete
+    findStoreValue() {
+      const bufferView = new BufferView(received);
+      const storeId = bufferView.readU32();
+      const callbackId = bufferView.readU64();
+      const findLength = bufferView.readU32();
+      const find = JSON.parse(bufferView.read(findLength));
+
+      const isSome = bufferView.readU32() === 1;
+
+      const store = idToStore.get(storeId);
+      assert(!!store, `Store name for ${storeId} does not exist.`);
+
+      if (isSome) {
+        const fields = (JSON.parse(bufferView.read(bufferView.readU32())) as string[])
+          .reduce((obj, key) => {
+            obj[key] = true;
+            return obj
+          }, {} as Record<string, true>);
+        store!.find(find, fields).then(storeDone(callbackId));
+      } else {
+        store!.find(find).then(storeDone(callbackId));
+      }
     },
 
     /**
