@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "erasableSyntaxOnly": false,
+    "types": [
+      "assemblyscript/std/assembly/index.d.ts",
+      "./primate/index.d.ts",
+    ]
+  },
+  "include": [
+    "**/*.ts"
+  ]
+}

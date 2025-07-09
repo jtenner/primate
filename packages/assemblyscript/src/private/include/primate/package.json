@@ -1,0 +1,5 @@
+{
+  "name": "primate",
+  "ascMain": "./src/index.ts",
+  "description": "AssemblyScript stdlib for primate."
+}

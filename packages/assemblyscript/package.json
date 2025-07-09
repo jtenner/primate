@@ -1,0 +1,45 @@
+{
+  "name": "@primate/assemblyscript",
+  "version": "0.0.1",
+  "description": "AssemblyScript backend for Primate",
+  "homepage": "https://primate.run/docs/backend/assemblyscript",
+  "bugs": "https://github.com/primate-run/primate/issues",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "assemblyscript": "latest",
+    "@devcycle/assemblyscript-json": "^2.0.0",
+    "@primate/core": "workspace:^",
+    "@rcompat/assert": "^0.1.0",
+    "@rcompat/fs": "^0.13.0",
+    "@rcompat/stdio": "^0.10.0"
+  },
+  "files": [
+    "/lib/**/*.js",
+    "!/**/*.spec.*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/primate-run/primate",
+    "directory": "packages/assemblyscript"
+  },
+  "scripts": {
+    "build": "npm run clean && mkdir -p lib/private/include && tsc && cp -a src/private/bootstrap/*.as lib/private/bootstrap && cp -a src/private/include lib/private/include",
+    "clean": "rm -rf ./lib",
+    "lint": "eslint .",
+    "prepublishOnly": "npm run build"
+  },
+  "imports": {
+    "#*": {
+      "apekit": "./src/private/*.ts",
+      "default": "./lib/private/*.js"
+    }
+  },
+  "exports": {
+    ".": {
+      "runtime": "./lib/runtime.js",
+      "default": "./lib/default.js"
+    },
+    "./*": "./lib/*.js"
+  }
+}
